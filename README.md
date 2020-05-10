@@ -15,7 +15,7 @@ Literally just import it. Start a plot. Push data to the plot whenever you want.
 
 Look at this.
 
-```lang=py
+```python
 from rtplot import TimeSeries
 
 plot = TimeSeries(seconds_to_show=10)
@@ -32,7 +32,7 @@ plot.quit()
 
 BRUH!!!!!
 
-```lang=py
+```python
 from rtplot import XY
 
 plot = XY(trail_seconds=3) # Or not! Leave blank to show all data
@@ -49,7 +49,7 @@ plot.quit()
 
 Supports context managers too
 
-```lang=py
+```python
 
 with rtplot.XY() as plot:
     (x, y) = datastream.read()
