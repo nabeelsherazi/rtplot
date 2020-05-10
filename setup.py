@@ -5,13 +5,13 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="rtplot",
-    version="1.0.0",
+    version="1.0.1",
     author="Nabeel Sherazi",
     author_email="sherazi.n@husky.neu.edu",
     description="Real time plotting. Yes, you can do it now.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/pypa/sampleproject",
+    url="https://github.com/nabeelsherazi/rtplot",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
