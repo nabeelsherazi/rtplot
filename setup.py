@@ -1,7 +1,9 @@
 import setuptools
-from core import __version__
+from rtplot.core.version import __version__
 
-with open("README.md", "r") as fh:
+print(f"Building rtplot version {__version__}")
+
+with open("rtplot/README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
@@ -13,7 +15,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/nabeelsherazi/rtplot",
-    packages=setuptools.find_packages(),
+    packages=["rtplot", "rtplot.core", "rtplot.shortcuts", "rtplot.examples"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

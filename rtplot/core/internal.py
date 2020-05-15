@@ -3,7 +3,7 @@
 # are instantiated entirely within the main, user-facing classes.
 # You should never need to instantiate one of these directly.
 
-from . import __version__
+from .version import __version__
 import numpy as np
 import time
 import matplotlib
