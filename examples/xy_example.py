@@ -1,9 +1,9 @@
 from rand_data_generators import random_walk
-import liveplot
+import rtplot
 
 walker = random_walk()
 
-with liveplot.XY(trail_seconds=3) as plot:
+with rtplot.XY(seconds_to_show=3) as plot:
     while True:
-        (x, y) = next(walker)
-        plot.update(x, y)
+        xy = next(walker)
+        plot.update(xy)

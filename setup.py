@@ -1,11 +1,12 @@
 import setuptools
+from core import __version__
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="rtplot",
-    version="1.0.1",
+    version=__version__,
     author="Nabeel Sherazi",
     author_email="sherazi.n@husky.neu.edu",
     description="Real time plotting. Yes, you can do it now.",

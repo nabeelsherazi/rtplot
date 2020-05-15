@@ -1,4 +1,2 @@
-VERSION = "1.0.0"
-
-from .timeseries import TimeSeries
-from .xy import XY
+from .core import __version__
+from .core.main import TimeSeries, XY
