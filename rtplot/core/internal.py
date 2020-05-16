@@ -252,7 +252,7 @@ class TimeSeriesInternal(InternalRealTimePlot):
         (ymin, ymax) = self.min_and_max(y_data)
         # Rule: within the newest quarter of data ...
         three_quarter_point = int(3 * np.size(y_data, 0) / 4)
-        if np.size(y_data, 1) == 1:
+        if self.n_lines == 1:
             newest_quarter_of_data = y_data[three_quarter_point:]
         else:
             newest_quarter_of_data = y_data[three_quarter_point:, :]

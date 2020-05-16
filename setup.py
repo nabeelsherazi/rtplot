@@ -1,9 +1,16 @@
 import setuptools
+import shutil
 from rtplot.core.version import __version__
 
 print(f"Building rtplot version {__version__}")
 
-with open("rtplot/README.md", "r") as fh:
+print("Cleaning old builds")
+
+shutil.rmtree("./build/", ignore_errors=True)
+shutil.rmtree("./dist/", ignore_errors=True)
+shutil.rmtree("./rtplot.egg-info/", ignore_errors=True)
+
+with open("./rtplot/README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
@@ -16,6 +23,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/nabeelsherazi/rtplot",
     packages=["rtplot", "rtplot.core", "rtplot.shortcuts", "rtplot.examples"],
+    package_data={"": ["LICENSE", "README.md"]},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
@@ -25,4 +33,5 @@ setuptools.setup(
         "Intended Audience :: Science/Research"
     ],
     python_requires='>=3.6',
+    install_requires=["matplotlib==3.1.3", "numpy>=1.18.1"],
 )
