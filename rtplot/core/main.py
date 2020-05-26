@@ -13,25 +13,28 @@ import multiprocessing
 from rtplot.core.internal import *
 import rtplot.core.helpers
 
+
 class RealTimePlot:
     """
     Base class for the user facing interface to create a real time plot.
     """
+
     def __init__(self, seconds_to_show=None, linestyle='b-', *args, **kwargs):
-        self._internal_plot_class = None # Gotta put in the internal plot class here when you subclass
+        # Gotta put in the internal plot class here when you subclass
+        self._internal_plot_class = None
         self.is_started = False
         self._seconds_to_show = seconds_to_show
         self._refresh_rate = 10
         self._linestyle = linestyle
         self.statics = []
-    
+
     def __enter__(self):
         """
         Allow usage in 'with' statements.
         """
         self.start()
         return self
-    
+
     def __exit__(self, exception_type, exception_value, traceback):
         """
         Allow usage in 'with' statements.
@@ -45,13 +48,14 @@ class RealTimePlot:
         axes as necessary.
         """
         return self._seconds_to_show
-    
+
     @seconds_to_show.setter
     def seconds_to_show(self, value):
         if not self.is_started:
             self._seconds_to_show = value
         else:
-            raise Exception("Cannot change value while plot is running. Quit plot to change values, then restart.")
+            raise Exception(
+                "Cannot change value while plot is running. Quit plot to change values, then restart.")
 
     @property
     def linestyle(self):
@@ -63,13 +67,14 @@ class RealTimePlot:
         (they'll just have auto linestyles)
         """
         return self._linestyle
-    
+
     @linestyle.setter
     def linestyle(self, value):
         if not self.is_started:
             self._linestyle = value
         else:
-            raise Exception("Cannot change value while plot is running. Quit plot to change values, then restart.")
+            raise Exception(
+                "Cannot change value while plot is running. Quit plot to change values, then restart.")
 
     @property
     def refresh_rate(self):
@@ -77,18 +82,20 @@ class RealTimePlot:
         Refresh rate of the animation in Hz. Default 10 Hz.
         """
         return self._refresh_rate
-    
+
     @refresh_rate.setter
     def refresh_rate(self, value):
         if not self.is_started:
             self._refresh_rate = value
         else:
-            raise Exception("Cannot change value while plot is running. Quit plot to change values, then restart.")
+            raise Exception(
+                "Cannot change value while plot is running. Quit plot to change values, then restart.")
 
     def add_static(self, static_name, **kwargs):
         valid_statics = ["point", "circle", "rectangle", "vline", "hline"]
         if static_name not in valid_statics:
-            raise Exception("Invalid static requested. See help on this function.")
+            raise Exception(
+                "Invalid static requested. See help on this function.")
         new_static = {}
         if static_name == "point":
             new_static = rtplot.core.helpers.point(**kwargs)
@@ -107,8 +114,10 @@ class RealTimePlot:
         Handles instantiating the internal plot. End users should not need to call this ever, it's
         done in the start function.
         """
-        self._plot = self._internal_plot_class(mp_queue, self.seconds_to_show, self.linestyle, self.statics)
-        self._plot.start_animation(int(1 / self._refresh_rate * 1E3)) # Convert Hz to milliseconds
+        self._plot = self._internal_plot_class(
+            mp_queue, self.seconds_to_show, self.linestyle, self.statics)
+        # Convert Hz to milliseconds
+        self._plot.start_animation(int(1 / self._refresh_rate * 1E3))
 
     def start(self):
         """
@@ -117,7 +126,8 @@ class RealTimePlot:
         try:
             self._queue = multiprocessing.Queue()
             self.is_started = True
-            self._process = multiprocessing.Process(target=self._create_internal_plot, args=(self._queue,))
+            self._process = multiprocessing.Process(
+                target=self._create_internal_plot, args=(self._queue,))
             self._process.start()
         except RuntimeError:
             print("""If you're seeing this error, you probably forgot to wrap your code in a `if __name == "__main__"` guard.""")
@@ -130,7 +140,6 @@ class RealTimePlot:
         update will be used to infer.
         """
         raise NotImplementedError
-
 
     def quit(self):
         """
@@ -148,13 +157,15 @@ class TimeSeries(RealTimePlot, TimeSeriesInternal):
     hasn't been specified yet (via multiple linestyles given), then the length of the first
     update will be used to infer.
     """
+
     def __init__(self, seconds_to_show=None, linestyle='b-'):
         super().__init__(seconds_to_show, linestyle)
         self._internal_plot_class = TimeSeriesInternal
 
     def update(self, y):
         if not self.is_started:
-            raise Exception("Call to update before plot was started. Call start first.")
+            raise Exception(
+                "Call to update before plot was started. Call start first.")
         # Coerce to numpy array
         if not isinstance(y, np.ndarray):
             y = np.array(y)
@@ -168,7 +179,8 @@ class XY(RealTimePlot, XYInternal):
     """
     Live plot for XY data. Non-blocking.
     """
-    def __init__(self, seconds_to_show = None, linestyle='b-'):
+
+    def __init__(self, seconds_to_show=None, linestyle='b-'):
         super().__init__(seconds_to_show, linestyle)
         self._internal_plot_class = XYInternal
 
@@ -180,19 +192,23 @@ class XY(RealTimePlot, XYInternal):
         """
         try:
             if not self.is_started:
-                raise Exception("Call to update before plot was started. Call start first.")
+                raise Exception(
+                    "Call to update before plot was started. Call start first.")
             # Coerce to numpy array
             if not isinstance(xys, np.ndarray):
                 xys = np.array(xys)
             # There are two errors to catch here
             try:
                 # If passed array is single column, this will raise IndexError
-                num_coords =  np.size(xys, 1)
+                num_coords = np.size(xys, 1)
                 # If it's more than two columns, we have to raise here
                 if num_coords != 2:
-                    raise Exception("Number coordinates per line doesn't equal two.")
+                    raise Exception(
+                        "Number coordinates per line doesn't equal two.")
             except IndexError:
-                raise Exception("Number coordinates per line doesn't equal two.")
+                if np.size(xys) != 2:
+                    raise Exception(
+                        "Number coordinates in passed array doesn't equal two.")
 
             if self.seconds_to_show is not None:
                 # If trail specified, send time of update as well
@@ -201,5 +217,48 @@ class XY(RealTimePlot, XYInternal):
                 # Else send only data
                 self._queue.put(xys)
         except:
-            print("An error occurred in the data provided to 'update'. See more information below.")
+            print(
+                "An error occurred in the data provided to 'update'. See more information below.")
+            raise
+
+##################### 3D Scatter Plot #####################
+
+
+class Z3D(RealTimePlot, Z3DInternal):
+    """
+    Live plot for 3D XYZ data. Non-blocking.
+    """
+
+    def __init__(self, seconds_to_show=None, linestyle='b-'):
+        super().__init__(seconds_to_show, linestyle)
+        self._internal_plot_class = Z3DInternal
+
+    def update(self, xyzs):
+        """
+        Update the live plot with a new data point. If the number of concurrent lines to plot
+        hasn't been specified yet (via multiple linestyles given), then the length of the first
+        update will be used to infer.
+        """
+        try:
+            if not self.is_started:
+                raise Exception(
+                    "Call to update before plot was started. Call start first.")
+            # Coerce to numpy array
+            if not isinstance(xyzs, np.ndarray):
+                xyzs = np.array(xyzs)
+
+            (num_coords, num_lines) = rtplot.core.helpers.get_data_characteristics(xyzs)
+            if num_coords != 3:
+                raise Exception(
+                    "Data provided does not contain three coordinates for every line")
+
+            if self.seconds_to_show is not None:
+                # If trail specified, send time of update as well
+                self._queue.put((xyzs, time.time_ns()))
+            else:
+                # Else send only data
+                self._queue.put(xyzs)
+        except:
+            print(
+                "An error occurred in the data provided to 'update'. See more information below.")
             raise

@@ -1,0 +1,11 @@
+- The resize event axes update hack doesn't work for 3D plots. Have to figure out a workaround.
+
+- Add statics for 3D plots
+
+- Refactor the way lines are registered to each plot so it's possible to stop plotting a line at any time
+    - This would also store line heads and lines together, and provide a way to mark whether lines will
+      express their heads or not
+
+- Refactor FPS to a percentage calculation, which looks at the time between data being provided and the
+  time it takes to plot a frame and calculates whether data is being provided faster than it can be plotted
+  or not.

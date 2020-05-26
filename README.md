@@ -2,14 +2,13 @@
 
 _Author: Nabeel Sherazi, sherazi.n@husky.neu.edu_
 
-
 Have you ever noticed how if you want to plot a data stream in real time using matplotlib, it's uhhhhhh absolutely impossible? Like something about FuncAnimation and threading and basically all of this stuff -- IT'S SO FRICKING HARD TO JUST PLOT A DATA STREAM IN REAL TIME.
 
 Well I Googled about this for like six hours and found literally not a single library that would just let me looking at a frickin stream of numbers in real time. So I said okay fine I'll just frickin write it myself and then put it out there so no one ever has to struggle with this again.
 
-## Presenting: rtplot --  it's real time plotting, but it's actually easy!!! For once!!!
+## Presenting: rtplot -- it's real time plotting, but it's actually easy!!! For once!!!
 
-Literally just import it. Start a plot. Push data to the plot whenever you want. Or don't. It literally doesn't matter. rtplot can do real-time XY plots and real time timeseries (single variable) data. It's so sweet. It can do multiple plots too. Like 20 timeseries at once. At 60 fps. Seriously.
+Literally just import it. Start a plot. Push data to the plot whenever you want. Or don't. It literally doesn't matter. rtplot can do real-time XY plots, 3D plots, and timeseries (single variable) data. It's so sweet. It can do multiple plots too. Like 20 timeseries at once. At 60 fps. Seriously.
 
 ## Usage
 
@@ -43,6 +42,24 @@ while True:
     xy1 = robot1.position()
     xy2 = robot2.position()
     plot.update([xy1, xy2])
+
+plot.quit()
+
+```
+
+oh you thought i was JOKING?????
+
+```python
+from rtplot import Z3D
+
+plot = Z3D(seconds_to_show=1)
+
+plot.start()
+
+while True:
+    xy = drone.gps_position()
+    z = drone.altitude()
+    plot.update([*xy, z])
 
 plot.quit()
 
@@ -83,4 +100,3 @@ Natively Python 3 unlike some of the solutions I found!!!! Only external depende
 One day I'll write some real docs for this but for now the source code is really small so if you don't get how to use something just look at the source code. I think I commented it pretty well. Also see the examples.
 
 DEUCES
-

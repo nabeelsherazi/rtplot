@@ -10,9 +10,12 @@ import matplotlib
 from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 from matplotlib import style
+from mpl_toolkits.mplot3d import Axes3D
+import rtplot.core.helpers
 import copy
 from collections import deque
 import multiprocessing
+
 
 class InternalRealTimePlot:
     """
@@ -21,6 +24,7 @@ class InternalRealTimePlot:
     and contains common attributes and methods for all such internal
     plots.
     """
+
     def __init__(self, mp_queue, seconds_to_show, linestyle, statics, *args, **kwargs):
 
         # Queue reference for getting data from parent process
@@ -30,10 +34,10 @@ class InternalRealTimePlot:
         style.use('fivethirtyeight')
 
         # Create figure for plotting
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(subplot_kw=kwargs)
         self.fig = fig
         self.ax = ax
-        self.fig.subplots_adjust(bottom=0.15) # Fix xlabel cutoff bug
+        self.fig.subplots_adjust(bottom=0.15)  # Fix xlabel cutoff bug
         self.fig.canvas.set_window_title(f"rtplot {__version__}: 0 fps")
 
         self.seconds_to_show = seconds_to_show
@@ -48,6 +52,9 @@ class InternalRealTimePlot:
         # Store reference to all lines here
         self.lines = []
 
+        # Store reference to line heads, if needed, here
+        self.line_heads = []
+
         # Check type of linestyle: if a list is passed,
         # we can expect multiline plotting and can set self.n_lines
         # now. If a string is passed, could be one or more, we don't know
@@ -57,10 +64,16 @@ class InternalRealTimePlot:
                 # Make an empty plot
                 i_line, = plt.plot([], [], i_style)
                 self.lines.append(i_line)
+                i_line_head, = plt.plot(
+                    [], [], marker='o', c=i_line.get_color(), markersize=10)
+                self.line_heads.append(i_line_head)
         else:
             line, = plt.plot([], [], linestyle)
+            line_head, = plt.plot([], [], marker='o',
+                                  c=line.get_color(), markersize=10)
             self.lines.append(line)
-        
+            self.line_heads.append(line_head)
+
         # Track how many seconds since last frame (for fps)
         self.last_finished_frame_time = 0.00
 
@@ -94,18 +107,19 @@ class InternalRealTimePlot:
                 xy = params.pop("xy")
                 if "linestyle" in params:
                     if '-' in params["linestyle"]:
-                        raise Warning("Custom linestyle for static point includes directive to plot as line. This point won't be visible.")
+                        raise Warning(
+                            "Custom linestyle for static point includes directive to plot as line. This point won't be visible.")
                     static_pt, = plt.plot(xy[0], xy[1], params["linestyle"])
                 else:
                     static_pt, = plt.plot(xy[0], xy[1], 'x')
                 self.static_objects.append(static_pt)
-            
+
             elif static_name == "circle":
                 xy = params.pop("xy")
                 c = plt.Circle(xy, **params)
                 self.ax.add_patch(c)
                 self.static_objects.append(c)
-            
+
             elif static_name == "rectangle":
                 xy = params.pop("xy")
                 width = params.pop("width")
@@ -113,12 +127,12 @@ class InternalRealTimePlot:
                 rect = plt.Rectangle(xy, width, height, **params)
                 self.ax.add_patch(rect)
                 self.static_objects.append(rect)
-            
+
             elif static_name == "vline":
                 x = params.pop("x")
                 line = plt.axvline(x, 0, 1, **params)
                 self.static_objects.append(line)
-            
+
             elif static_name == "hline":
                 y = params.pop("y")
                 line = self.ax.axhline(y, 0, 1, **params)
@@ -140,7 +154,8 @@ class InternalRealTimePlot:
         if delta_time == 0:
             fps = "∞"
         else:
-            fps = round(1E9 / (current_time_ns - self.last_finished_frame_time), 2)
+            fps = round(1E9 / (current_time_ns -
+                               self.last_finished_frame_time), 2)
         self.fig.canvas.set_window_title(f"rtplot {__version__}: {fps} fps")
         self.last_finished_frame_time = current_time_ns
 
@@ -158,16 +173,25 @@ class InternalRealTimePlot:
         """
         Starts the animation.
         """
-        self.refresh_interval = refresh_interval # milliseconds
-        self.ani = animation.FuncAnimation(self.fig, self.plot_update_master, init_func=self.plot_init, interval=refresh_interval, blit=True)
+        self.refresh_interval = refresh_interval  # milliseconds
+        self.ani = animation.FuncAnimation(
+            self.fig, self.plot_update_master, init_func=self.plot_init, interval=refresh_interval, blit=True)
         plt.show()
-    
+
     def min_and_max(self, data):
         """
         Return the min and max of a given numpy array, as a tuple
         """
         return (np.amin(data), np.amax(data))
-    
+
+    def get_data_bounds(self, data_list):
+        bounds = []
+        for data in data_list:
+            (dmin, dmax) = self.min_and_max(data)
+            drange = dmax - dmin
+            bounds.append({"range": drange, "min": dmin, "max": dmax})
+        return bounds
+
     def force_redraw(self):
         """
         Force the canvas to perform a full redraw, including the background.
@@ -184,6 +208,7 @@ class TimeSeriesInternal(InternalRealTimePlot):
     """
     Internal plot for TimeSeries
     """
+
     def __init__(self, mp_queue, seconds_to_show, linestyle, statics):
         super().__init__(mp_queue, seconds_to_show, linestyle, statics)
 
@@ -211,12 +236,12 @@ class TimeSeriesInternal(InternalRealTimePlot):
 
     def plot_update(self, frame_number):
 
-        # Read as much data as we can get from multiprocess queue 
+        # Read as much data as we can get from multiprocess queue
         while not self.queue.empty():
             (t, y) = self.queue.get()
             self.ts.append(t)
             # If the number of lines is already defined, check new data
-            # consistency with it    
+            # consistency with it
             if self.n_lines is not None and y.size != self.n_lines:
                 raise Exception(f"Inconsistent number of lines to plot: expected {self.n_lines} "
                                 f"but last update only contained {y.size} data points.")
@@ -225,7 +250,8 @@ class TimeSeriesInternal(InternalRealTimePlot):
                 self.n_lines = y.size
                 # Create new line objects for the new data points
                 while len(self.lines) < self.n_lines:
-                    new_line, = plt.plot([], []) # New lines will have auto linestyle
+                    # New lines will have auto linestyle
+                    new_line, = plt.plot([], [])
                     self.lines.append(new_line)
             self.ys.append(y)
 
@@ -257,10 +283,12 @@ class TimeSeriesInternal(InternalRealTimePlot):
         else:
             newest_quarter_of_data = y_data[three_quarter_point:, :]
         # ... if more than half of *any* line is out of bounds,
-        outside_bounds_mask = (newest_quarter_of_data < self.current_ymin) | (newest_quarter_of_data > self.current_ymax)
+        outside_bounds_mask = (newest_quarter_of_data < self.current_ymin) | (
+            newest_quarter_of_data > self.current_ymax)
         max_frac_outside = 0.0
         for i in range(self.n_lines):
-            frac_outside = outside_bounds_mask[:, i].sum() / outside_bounds_mask[:, i].size
+            frac_outside = outside_bounds_mask[:, i].sum(
+            ) / outside_bounds_mask[:, i].size
             if frac_outside > max_frac_outside:
                 max_frac_outside = frac_outside
         if max_frac_outside >= 0.5:
@@ -270,7 +298,7 @@ class TimeSeriesInternal(InternalRealTimePlot):
             need_redraw = True
             self.current_ymin = ymin - margin
             self.current_ymax = ymax + margin
-        
+
         if self.seconds_to_show is None and t_data[0] < self.current_tmin:
             self.current_tmin -= 5
             self.ax.set_xlim(self.current_tmin, 0)
@@ -278,7 +306,7 @@ class TimeSeriesInternal(InternalRealTimePlot):
 
         if need_redraw:
             self.force_redraw()
-                
+
         # Draw data
         for i in range(self.n_lines):
             current_line = self.lines[i]
@@ -296,6 +324,7 @@ class XYInternal(InternalRealTimePlot):
     """
     Internal plot for XY
     """
+
     def __init__(self, mp_queue, seconds_to_show, linestyle, statics):
 
         super().__init__(mp_queue, seconds_to_show, linestyle, statics)
@@ -303,7 +332,7 @@ class XYInternal(InternalRealTimePlot):
         # Use deques for storing rolling data (optionally rolling)
         # Each element of this deque should be a (n_lines x 2) ndarray
         self.points = deque()
-        
+
         self.is_trail_on = False
         self.seconds_to_show = seconds_to_show
         if self.seconds_to_show is not None:
@@ -326,29 +355,34 @@ class XYInternal(InternalRealTimePlot):
     def plot_init(self):
         plt.xlabel("X")
         plt.ylabel("Y")
-        return self.lines + self.static_objects
+        return self.line_heads + self.lines + self.static_objects
 
     def plot_update(self, frame_number):
-        # Read as much data as we can get from multiprocess queue 
+        # Read as much data as we can get from multiprocess queue
         while not self.queue.empty():
             data_point = self.queue.get()
             xys = data_point[0]
             if self.is_trail_on:
                 t = data_point[1]
-            if self.n_lines is not None and np.size(xys, 0) != self.n_lines:
+            (data_n_coords, data_n_lines) = rtplot.core.helpers.get_data_characteristics(xys)
+            if self.n_lines is not None and data_n_lines != self.n_lines:
                 raise Exception(f"Inconsistent number of lines to plot: expected {self.n_lines} "
-                                f"but last update contained {np.size(xys, 0)} data points.")
+                                f"but last update contained {data_n_lines} data points.")
             else:
                 # If number of lines isn't defined, infer it from the first update
-                self.n_lines = np.size(xys, 0)
+                self.n_lines = data_n_lines
                 # Create new line objects for the new data points
                 while len(self.lines) < self.n_lines:
-                    new_line, = plt.plot([], []) # New lines will have auto linestyle
+                    # New lines will have auto linestyle
+                    new_line, = plt.plot([], [])
+                    new_line_head, = plt.plot(
+                        [], [], marker='o', c=new_line.get_color(), markersize=10)
                     self.lines.append(new_line)
+                    self.line_heads.append(new_line_head)
             self.points.append(xys)
             if self.is_trail_on:
                 self.ts.append(t)
-        
+
         if self.is_trail_on:
             current_time_ns = time.time_ns()
             # Remove from front if timestamp of oldest data is older than max seconds to show
@@ -357,7 +391,8 @@ class XYInternal(InternalRealTimePlot):
                 self.ts.popleft()
 
         # These lists are unsorted *all* x and y data, for the purposes of bounds checking.
-        # We will not use not use these outside of that purpose
+        # We will not use these otherwise unless there's only one line anyway (in which case
+        # it doesn't matter)
         pts_data = np.array(self.points)
         if self.n_lines == 1:
             all_x_data = pts_data[:, 0]
@@ -367,17 +402,13 @@ class XYInternal(InternalRealTimePlot):
             all_y_data = pts_data[:, :, 1]
 
         # Adjust bounds if needed
-        (xmin, xmax) = self.min_and_max(all_x_data)
-        (ymin, ymax) = self.min_and_max(all_y_data)
-        x_axis_range = xmax - xmin
-        y_axis_range = ymax - ymin
+        bounds = self.get_data_bounds([all_x_data, all_y_data])
 
-        if y_axis_range > x_axis_range:
-            min_side_length = abs(y_axis_range)
-            longer_side_is_y = True
-        else:
-            min_side_length = abs(x_axis_range)
-            longer_side_is_y = False
+        # Get the axis with the longest length
+        bounds.sort(key=lambda b: b["range"], reverse=True)
+        longest_bound = bounds[0]
+
+        min_side_length = abs(longest_bound["range"])
 
         # RULE: If lines go outside of the current bounds + a margin width, need a redraw
         # If all lines are inside of 75% of the current bounds, need a redraw
@@ -392,12 +423,10 @@ class XYInternal(InternalRealTimePlot):
             if min_side_length > (self.current_side_length + 3 * current_margin):
                 # Screw the rules, redraw now
                 margin = 0.1 * min_side_length
-                if longer_side_is_y:
-                    plt.xlim(ymin - margin , ymax + margin)
-                    plt.ylim(ymin - margin, ymax + margin)
-                else:
-                    plt.xlim(xmin - margin, xmax + margin)
-                    plt.ylim(xmin - margin, xmax + margin)
+                plt.xlim(longest_bound["min"] - margin,
+                         longest_bound["max"] + margin)
+                plt.ylim(longest_bound["min"] - margin,
+                         longest_bound["max"] + margin)
                 self.current_side_length = min_side_length + margin
                 self.force_redraw()
                 self.need_redraw = False
@@ -406,16 +435,15 @@ class XYInternal(InternalRealTimePlot):
             self.need_redraw = False
             self.num_frames_have_needed_redraw = 0
 
-        secs_have_needed_redraw = self.num_frames_have_needed_redraw * self.refresh_interval / 1000
+        secs_have_needed_redraw = self.num_frames_have_needed_redraw * \
+            self.refresh_interval / 1000
         if secs_have_needed_redraw > 1.0 and self.need_redraw:
             # Redraw now
             margin = 0.1 * min_side_length
-            if longer_side_is_y:
-                plt.xlim(ymin - margin , ymax + margin)
-                plt.ylim(ymin - margin, ymax + margin)
-            else:
-                plt.xlim(xmin - margin, xmax + margin)
-                plt.ylim(xmin - margin, xmax + margin)
+            plt.xlim(longest_bound["min"] - margin,
+                     longest_bound["max"] + margin)
+            plt.ylim(longest_bound["min"] - margin,
+                     longest_bound["max"] + margin)
             self.current_side_length = min_side_length + margin
             self.force_redraw()
             self.need_redraw = False
@@ -425,12 +453,180 @@ class XYInternal(InternalRealTimePlot):
         if self.n_lines == 1:
             line = self.lines[0]
             line.set_data(all_x_data, all_y_data)
+            line_head = self.line_heads[0]
+            line_head.set_data(all_x_data[-1], all_y_data[-1])
         else:
             for i in range(self.n_lines):
                 line_i = self.lines[i]
+                line_head_i = self.line_heads[i]
                 # Get time series of this line
                 ix_data = pts_data[:, i, 0]
                 iy_data = pts_data[:, i, 1]
                 line_i.set_data(ix_data, iy_data)
+                line_head_i.set_data(ix_data[-1], iy_data[-1])
 
-        return self.lines + self.static_objects
+        return self.line_heads + self.lines + self.static_objects
+
+
+class Z3DInternal(InternalRealTimePlot):
+    """
+    Internal plot for Z3D
+    """
+
+    def __init__(self, mp_queue, seconds_to_show, linestyle, statics):
+
+        super().__init__(mp_queue, seconds_to_show, linestyle, statics, projection="3d")
+
+        # Use deques for storing rolling data (optionally rolling)
+        # Each element of this deque should be a (n_lines x 3) ndarray
+        self.points = deque()
+
+        self.is_trail_on = False
+        self.seconds_to_show = seconds_to_show
+        if self.seconds_to_show is not None:
+            # If we want to only plot the last few seconds of data,
+            # we need to store the time each data point was received at
+            # too
+            self.is_trail_on = True
+            self.ts = deque()
+
+        # Bounds
+        self.current_side_length = 0
+        self.last_redraw_frame_number = 0
+        self.need_redraw = False
+        self.num_frames_have_needed_redraw = 0
+
+        # Statics
+        self.static_definitions = statics
+        self.generate_statics()
+
+    def plot_init(self):
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        self.ax.set_zlabel("Z")
+        return self.line_heads + self.lines + self.static_objects
+
+    def plot_update(self, frame_number):
+        # Read as much data as we can get from multiprocess queue
+        while not self.queue.empty():
+            data_point = self.queue.get()
+            xyzs = data_point[0]
+            if self.is_trail_on:
+                t = data_point[1]
+
+            (data_n_coords, data_n_lines) = rtplot.core.helpers.get_data_characteristics(xyzs)
+
+            if self.n_lines is not None and data_n_lines != self.n_lines:
+                raise Exception(f"Inconsistent number of lines to plot: expected {self.n_lines} "
+                                f"but last update contained {data_n_lines} data points.")
+            else:
+                # If number of lines isn't defined, infer it from the first update
+                self.n_lines = data_n_lines
+                # Create new line objects for the new data points
+                while len(self.lines) < self.n_lines:
+                    # New lines will have auto linestyle
+                    new_line, = plt.plot([], [], zs=[])
+                    # New line head must have same color as previous line
+                    new_line_head, = plt.plot(
+                        [], [], zs=[], marker='o', c=new_line.get_color(), markersize=10)
+                    self.lines.append(new_line)
+                    self.line_heads.append(new_line_head)
+            self.points.append(xyzs)
+            if self.is_trail_on:
+                self.ts.append(t)
+
+        if self.is_trail_on:
+            current_time_ns = time.time_ns()
+            # Remove from front if timestamp of oldest data is older than max seconds to show
+            while (current_time_ns - self.ts[0]) > self.seconds_to_show_ns:
+                self.points.popleft()
+                self.ts.popleft()
+
+        # These lists are unsorted *all* x, y, and z data, for the purposes of bounds checking.
+        # We will not use these otherwise unless there's only one line anyway (in which case
+        # it doesn't matter)
+        pts_data = np.array(self.points)
+        if self.n_lines == 1:
+            all_x_data = pts_data[:, 0]
+            all_y_data = pts_data[:, 1]
+            all_z_data = pts_data[:, 2]
+        else:
+            all_x_data = pts_data[:, :, 0]
+            all_y_data = pts_data[:, :, 1]
+            all_z_data = pts_data[:, :, 2]
+
+        # Adjust bounds if needed
+        bounds = self.get_data_bounds([all_x_data, all_y_data, all_z_data])
+
+        # Get the axis with the longest length
+        bounds.sort(key=lambda b: b["range"], reverse=True)
+        longest_bound = bounds[0]
+
+        min_side_length = abs(longest_bound["range"])
+
+        # RULE: If lines go outside of the current bounds + a margin width, need a redraw
+        # If all lines are inside of 75% of the current bounds, need a redraw
+        # If we've needed a redraw for more than three seconds, do the redraw
+
+        current_margin = 0.1 * self.current_side_length
+
+        if min_side_length > (self.current_side_length + current_margin) or min_side_length < 0.75 * self.current_side_length:
+            self.need_redraw = True
+            self.num_frames_have_needed_redraw += 1
+            # If the need is dire
+            if min_side_length > (self.current_side_length + 3 * current_margin):
+                # Screw the rules, redraw now
+                margin = 0.1 * min_side_length
+                plt.xlim(longest_bound["min"] - margin,
+                         longest_bound["max"] + margin)
+                plt.ylim(longest_bound["min"] - margin,
+                         longest_bound["max"] + margin)
+                self.ax.set_zlim(longest_bound["min"] + margin,
+                                 longest_bound["max"] + margin)
+                self.current_side_length = min_side_length + margin
+                self.force_redraw()
+                self.need_redraw = False
+                self.num_frames_have_needed_redraw = 0
+        else:
+            self.need_redraw = False
+            self.num_frames_have_needed_redraw = 0
+
+        secs_have_needed_redraw = self.num_frames_have_needed_redraw * \
+            self.refresh_interval / 1000
+        if secs_have_needed_redraw > 1.0 and self.need_redraw:
+            # Redraw now
+            margin = 0.1 * min_side_length
+            plt.xlim(longest_bound["min"] + margin,
+                     longest_bound["max"] + margin)
+            plt.ylim(longest_bound["min"] + margin,
+                     longest_bound["max"] + margin)
+            self.ax.set_zlim(longest_bound["min"] + margin,
+                             longest_bound["max"] + margin)
+            self.current_side_length = min_side_length + margin
+            self.force_redraw()
+            self.need_redraw = False
+            self.num_frames_have_needed_redraw = 0
+
+        # Draw data
+        if self.n_lines == 1:
+            line = self.lines[0]
+            line_head = self.line_heads[0]
+            line.set_data(all_x_data, all_y_data)
+            line.set_3d_properties(all_z_data)
+            line_head.set_data(pts_data[-1, 0], pts_data[-1, 1])
+            line_head.set_3d_properties(pts_data[-1, 2])
+        else:
+            for i in range(self.n_lines):
+                line_i = self.lines[i]
+                line_head_i = self.line_heads[i]
+                # Get time series of this line
+                ix_data = pts_data[:, i, 0]
+                iy_data = pts_data[:, i, 1]
+                iz_data = pts_data[:, i, 2]
+                line_i.set_data(ix_data, iy_data)
+                line_i.set_3d_properties(iz_data)
+
+                line_head_i.set_data(ix_data[-1], iy_data[-1])
+                line_head_i.set_3d_properties(iz_data[-1])
+
+        return self.line_heads + self.lines + self.static_objects
