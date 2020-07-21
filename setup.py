@@ -22,7 +22,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/nabeelsherazi/rtplot",
-    packages=["rtplot", "rtplot.core", "rtplot.shortcuts", "rtplot.examples"],
+    packages=["rtplot", "rtplot.internal", "rtplot.api", "rtplot.shortcuts", "rtplot.examples"],
     package_data={"": ["README.md", "LICENSE"]},
     classifiers=[
         "Programming Language :: Python :: 3",

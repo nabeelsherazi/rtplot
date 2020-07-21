@@ -10,9 +10,9 @@ import matplotlib.animation as animation
 from matplotlib import style
 from collections import deque
 import multiprocessing
-from rtplot.core.internal import *
-import rtplot.core.helpers
 
+import rtplot.internal
+import rtplot.helpers
 
 class RealTimePlot:
     """
@@ -147,118 +147,3 @@ class RealTimePlot:
         """
         self._process.terminate()
         self.is_started = False
-
-
-##################### Time Series #####################
-
-class TimeSeries(RealTimePlot, TimeSeriesInternal):
-    """
-    Update the live plot with a new data point. If the number of concurrent lines to plot
-    hasn't been specified yet (via multiple linestyles given), then the length of the first
-    update will be used to infer.
-    """
-
-    def __init__(self, seconds_to_show=None, linestyle='b-'):
-        super().__init__(seconds_to_show, linestyle)
-        self._internal_plot_class = TimeSeriesInternal
-
-    def update(self, y):
-        if not self.is_started:
-            raise Exception(
-                "Call to update before plot was started. Call start first.")
-        # Coerce to numpy array
-        if not isinstance(y, np.ndarray):
-            y = np.array(y)
-        self._queue.put((time.time_ns(), y))
-
-
-##################### XY Plot #####################
-
-
-class XY(RealTimePlot, XYInternal):
-    """
-    Live plot for XY data. Non-blocking.
-    """
-
-    def __init__(self, seconds_to_show=None, linestyle='b-'):
-        super().__init__(seconds_to_show, linestyle)
-        self._internal_plot_class = XYInternal
-
-    def update(self, xys):
-        """
-        Update the live plot with a new data point. If the number of concurrent lines to plot
-        hasn't been specified yet (via multiple linestyles given), then the length of the first
-        update will be used to infer.
-        """
-        try:
-            if not self.is_started:
-                raise Exception(
-                    "Call to update before plot was started. Call start first.")
-            # Coerce to numpy array
-            if not isinstance(xys, np.ndarray):
-                xys = np.array(xys)
-            # There are two errors to catch here
-            try:
-                # If passed array is single column, this will raise IndexError
-                num_coords = np.size(xys, 1)
-                # If it's more than two columns, we have to raise here
-                if num_coords != 2:
-                    raise Exception(
-                        "Number coordinates per line doesn't equal two.")
-            except IndexError:
-                if np.size(xys) != 2:
-                    raise Exception(
-                        "Number coordinates in passed array doesn't equal two.")
-
-            if self.seconds_to_show is not None:
-                # If trail specified, send time of update as well
-                self._queue.put((xys, time.time_ns()))
-            else:
-                # Else send only data
-                self._queue.put(xys)
-        except:
-            print(
-                "An error occurred in the data provided to 'update'. See more information below.")
-            raise
-
-##################### 3D Scatter Plot #####################
-
-
-class Z3D(RealTimePlot, Z3DInternal):
-    """
-    Live plot for 3D XYZ data. Non-blocking.
-    """
-
-    def __init__(self, seconds_to_show=None, linestyle='b-'):
-        super().__init__(seconds_to_show, linestyle)
-        self._internal_plot_class = Z3DInternal
-
-    def update(self, xyzs):
-        """
-        Update the live plot with a new data point. If the number of concurrent lines to plot
-        hasn't been specified yet (via multiple linestyles given), then the length of the first
-        update will be used to infer.
-        """
-        try:
-            if not self.is_started:
-                raise Exception(
-                    "Call to update before plot was started. Call start first.")
-            # Coerce to numpy array
-            if not isinstance(xyzs, np.ndarray):
-                xyzs = np.array(xyzs)
-
-            (num_coords, num_lines) = rtplot.core.helpers.get_data_characteristics(xyzs)
-            if num_coords != 3:
-                raise Exception(
-                    "Data provided does not contain three coordinates for every line")
-
-            if self.seconds_to_show is not None:
-                # If trail specified, send time of update as well
-                self._queue.put((xyzs, time.time_ns()))
-            else:
-                # Else send only data
-                self._queue.put(xyzs)
-        except:
-            print(
-                "An error occurred in the data provided to 'update'. See more information below.")
-            raise
