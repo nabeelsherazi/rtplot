@@ -2,6 +2,7 @@
 # Contains classes related to the external, user-facing plot API.
 # Classes from here are what should be instantiated in your code.
 
+import rtplot.helpers
 import numpy as np
 import time
 import matplotlib
@@ -11,17 +12,19 @@ from matplotlib import style
 from collections import deque
 import multiprocessing
 
-import rtplot.internal
+import rtplot.api as Api
+import rtplot.internal as Internal
 import rtplot.helpers
 
-class XY(RealTimePlot, XYInternal):
+
+class XY(Api.RealTimePlot):
     """
     Live plot for XY data. Non-blocking.
     """
 
-    def __init__(self, seconds_to_show=None, timeout=-1, linestyle='b-'):
-        super().__init__(seconds_to_show, linestyle)
-        self._internal_plot_class = XYInternal
+    def __init__(self, seconds_to_show=None, timeout=None, linestyle='b-'):
+        super().__init__(Internal.XY, seconds_to_show=seconds_to_show,
+                         timeout=timeout, linestyle=linestyle)
 
     def update(self, xys):
         """

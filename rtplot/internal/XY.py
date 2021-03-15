@@ -3,8 +3,6 @@
 # are instantiated entirely within the main, user-facing classes.
 # You should never need to instantiate one of these directly.
 
-from .version import __version__
-
 import numpy as np
 import time
 import matplotlib
@@ -19,14 +17,16 @@ import multiprocessing
 import rtplot.internal as Internal
 import rtplot.helpers
 
-class XYInternal(InternalRealTimePlot):
+
+class XY(Internal.RealTimePlot):
     """
     Internal plot for XY
     """
 
-    def __init__(self, mp_queue, seconds_to_show, linestyle, statics):
+    def __init__(self, data_queue, message_queue, seconds_to_show, timeout, linestyle, statics):
 
-        super().__init__(mp_queue, seconds_to_show, linestyle, statics)
+        super().__init__(data_queue, message_queue,
+                         seconds_to_show, timeout, linestyle, statics)
 
         # Use deques for storing rolling data (optionally rolling)
         # Each element of this deque should be a (n_lines x 2) ndarray
@@ -57,30 +57,45 @@ class XYInternal(InternalRealTimePlot):
         return self.line_heads + self.lines + self.static_objects
 
     def plot_update(self, frame_number):
-        # Read as much data as we can get from multiprocess queue
-        while not self.queue.empty():
-            data_point = self.queue.get()
-            xys = data_point[0]
-            if self.is_trail_on:
-                t = data_point[1]
-            (data_n_coords, data_n_lines) = rtplot.core.helpers.get_data_characteristics(xys)
-            if self.n_lines is not None and data_n_lines != self.n_lines:
-                raise Exception(f"Inconsistent number of lines to plot: expected {self.n_lines} "
-                                f"but last update contained {data_n_lines} data points.")
+        # Check for timeout
+        current_time_ns = time.time_ns()
+        if (self.queue.empty() and self.timeout is not None and not self.did_time_out):
+            if current_time_ns - self.time_last_received_data >= self.timeout_ns:
+                self.did_time_out = True
+                raise SystemExit
             else:
-                # If number of lines isn't defined, infer it from the first update
-                self.n_lines = data_n_lines
-                # Create new line objects for the new data points
-                while len(self.lines) < self.n_lines:
-                    # New lines will have auto linestyle
-                    new_line, = plt.plot([], [])
-                    new_line_head, = plt.plot(
-                        [], [], marker='o', c=new_line.get_color(), markersize=10)
-                    self.lines.append(new_line)
-                    self.line_heads.append(new_line_head)
-            self.points.append(xys)
-            if self.is_trail_on:
-                self.ts.append(t)
+                return self.line_heads + self.lines + self.static_objects
+        else:
+            # Read as much data as we can get from multiprocess queue
+            while not self.queue.empty():
+                data_point = self.queue.get()
+                xys = data_point[0]
+                if self.is_trail_on:
+                    t = data_point[1]
+                (data_n_coords, data_n_lines) = rtplot.core.helpers.get_data_characteristics(
+                    xys)
+                if self.n_lines is not None and data_n_lines != self.n_lines:
+                    raise Exception(f"Inconsistent number of lines to plot: expected {self.n_lines} "
+                                    f"but last update contained {data_n_lines} data points.")
+                else:
+                    # If number of lines isn't defined, infer it from the first update
+                    self.n_lines = data_n_lines
+                    # Create new line objects for the new data points
+                    while len(self.lines) < self.n_lines:
+                        # New lines will have auto linestyle
+                        new_line, = plt.plot([], [])
+                        new_line_head, = plt.plot(
+                            [], [], marker='o', c=new_line.get_color(), markersize=10)
+                        self.lines.append(new_line)
+                        self.line_heads.append(new_line_head)
+                self.points.append(xys)
+                self.time_last_received_data = current_time_ns
+                if self.is_trail_on:
+                    self.ts.append(t)
+
+        # Short circuit on if no data
+        if len(self.xys) == 0 or len(self.ts) == 0:
+            return self.line_heads + self.lines + self.static_objects
 
         if self.is_trail_on:
             current_time_ns = time.time_ns()

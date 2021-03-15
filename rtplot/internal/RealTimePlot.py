@@ -3,7 +3,8 @@
 # are instantiated entirely within the main, user-facing classes.
 # You should never need to instantiate one of these directly.
 
-from .version import __version__
+from rtplot.version import __version__
+
 import numpy as np
 import time
 import matplotlib
@@ -11,10 +12,11 @@ from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 from matplotlib import style
 from mpl_toolkits.mplot3d import Axes3D
-import rtplot.core.helpers
 import copy
 from collections import deque
 import multiprocessing
+
+from rtplot.helpers import RtplotEvent
 
 
 class RealTimePlot:
@@ -25,31 +27,32 @@ class RealTimePlot:
     plots.
     """
 
-    def __init__(self, mp_queue, seconds_to_show, timeout, linestyle, statics, *args, **kwargs):
+    def __init__(self, data_queue, message_queue, **plot_options):
 
         # Queue reference for getting data from parent process
-        self.queue = mp_queue
+        self.data_queue = data_queue
+        self.message_queue = message_queue
 
         # Set style
         style.use('fivethirtyeight')
 
         # Create figure for plotting
-        fig, ax = plt.subplots(subplot_kw=kwargs)
+        fig, ax = plt.subplots(subplot_kw=plot_options)
         self.fig = fig
         self.ax = ax
         self.fig.subplots_adjust(bottom=0.15)  # Fix xlabel cutoff bug
         self.fig.canvas.set_window_title(f"rtplot {__version__}: 0 fps")
 
-        self.seconds_to_show = seconds_to_show
+        self.seconds_to_show = plot_options["seconds_to_show"]
 
         # How long before plot auto-closes
         # -1 = never timeout
-        self.timeout = timeout
+        self.timeout = plot_options["timeout"]
         self.time_last_received_data = time.time_ns()
         self.did_time_out = False
 
         # Statics
-        self.static_definitions = statics
+        self.static_definitions = plot_options["statics"]
         self.static_objects = []
 
         # Number of drawn lines
@@ -87,6 +90,13 @@ class RealTimePlot:
     def seconds_to_show_ns(self):
         if self.seconds_to_show is not None:
             return self.seconds_to_show * 1E9
+        else:
+            return None
+
+    @property
+    def timeout_ns(self):
+        if self.timeout is not None:
+            return self.timeout * 1E9
         else:
             return None
 
@@ -151,6 +161,12 @@ class RealTimePlot:
         of every subclass, such as updating the fps. Subclasses should NOT override this function.
         """
 
+        # Check for messages from the parent process
+        if not self.message_queue.empty():
+            msg = self.message_queue.get()
+            if msg == RtplotEvent.REQUEST_KILL:
+                self.kill()
+
         # Call the subclass-specific update function
         updated = self.plot_update(frame_number)
 
@@ -184,16 +200,18 @@ class RealTimePlot:
             self.fig, self.plot_update_master, init_func=self.plot_init, interval=refresh_interval, blit=True)
         plt.show()
 
-    def min_and_max(self, data):
+    @staticmethod
+    def min_and_max(data):
         """
         Return the min and max of a given numpy array, as a tuple
         """
         return (np.amin(data), np.amax(data))
 
-    def get_data_bounds(self, data_list):
+    @staticmethod
+    def get_data_bounds(data_list):
         bounds = []
         for data in data_list:
-            (dmin, dmax) = self.min_and_max(data)
+            (dmin, dmax) = RealTimePlot.min_and_max(data)
             drange = dmax - dmin
             bounds.append({"range": drange, "min": dmin, "max": dmax})
         return bounds
@@ -208,3 +226,7 @@ class RealTimePlot:
         """
         self.ani._init_func = None
         self.fig.canvas.resize_event()
+
+    def kill(self):
+        plt.close("all")
+        raise SystemExit

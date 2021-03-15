@@ -9,3 +9,5 @@
 - Refactor FPS to a percentage calculation, which looks at the time between data being provided and the
   time it takes to plot a frame and calculates whether data is being provided faster than it can be plotted
   or not.
+
+  - Change from using queues to ZMQ or something

@@ -1,5 +1,5 @@
-from rand_data_generators import random_walk
 import rtplot
+from rtplot.helpers import random_walk
 
 walker = random_walk()
 

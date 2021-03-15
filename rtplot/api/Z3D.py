@@ -11,17 +11,18 @@ from matplotlib import style
 from collections import deque
 import multiprocessing
 
-import rtplot.internal
+import rtplot.api as Api
+import rtplot.internal as Internal
 import rtplot.helpers
 
-class Z3D(RealTimePlot, Z3DInternal):
+
+class Z3D(Api.RealTimePlot):
     """
     Live plot for 3D XYZ data. Non-blocking.
     """
 
-    def __init__(self, seconds_to_show=None, linestyle='b-'):
-        super().__init__(seconds_to_show, linestyle)
-        self._internal_plot_class = Z3DInternal
+    def __init__(self, seconds_to_show=None, timeout=None, linestyle='b-'):
+        super().__init__(Internal.Z3D, seconds_to_show, timeout, linestyle)
 
     def update(self, xyzs):
         """

@@ -1,2 +1,3 @@
-from .version import __version__
-from .api import TimeSeries, XY, Z3D
+from rtplot.version import __version__
+from rtplot.api import TimeSeries, XY, Z3D
+import rtplot.shortcuts
