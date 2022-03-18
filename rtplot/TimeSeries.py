@@ -24,7 +24,7 @@ class TimeSeries(Api.RealTimePlot):
     """
 
     def __init__(self, **plot_options):
-        super().__init__(Internal.TimeSeries, **plot_options)
+        super().__init__(Internal.TimeSeries_Internal, **plot_options)
 
     def update(self, y):
         if not self.is_started:

@@ -18,7 +18,7 @@ import rtplot.internal as Internal
 import rtplot.helpers
 
 
-class Z3D(Internal.RealTimePlot):
+class Z3D(Internal.RealTimePlot_Internal):
     """
     Internal plot for Z3D
     """

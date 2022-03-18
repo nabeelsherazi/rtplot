@@ -18,7 +18,7 @@ import rtplot.internal as Internal
 import rtplot.helpers
 
 
-class XY(Internal.RealTimePlot):
+class XY(Internal.RealTimePlot_Internal):
     """
     Internal plot for XY
     """

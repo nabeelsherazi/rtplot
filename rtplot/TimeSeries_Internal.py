@@ -19,9 +19,9 @@ import rtplot.helpers
 from rtplot.helpers import RtplotEvent
 
 
-class TimeSeries(Internal.RealTimePlot):
+class TimeSeries(PlotServer):
     """
-    Internal plot for TimeSeries
+    A TimeSeries is a PlotServer of dimension 1
     """
 
     def __init__(self, data_queue, message_queue, **plot_options):

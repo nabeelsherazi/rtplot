@@ -23,7 +23,7 @@ class XY(Api.RealTimePlot):
     """
 
     def __init__(self, seconds_to_show=None, timeout=None, linestyle='b-'):
-        super().__init__(Internal.XY, seconds_to_show=seconds_to_show,
+        super().__init__(Internal.XY_Internal, seconds_to_show=seconds_to_show,
                          timeout=timeout, linestyle=linestyle)
 
     def update(self, xys):

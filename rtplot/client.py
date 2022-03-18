@@ -11,21 +11,23 @@ from matplotlib import style
 from collections import deque
 import multiprocessing
 
+# Messaging
+import zmq
+
 import rtplot.internal as Internal
 import rtplot.helpers
 from rtplot.helpers import RtplotEvent
 
 
-class RealTimePlot:
+class PlotClient:
     """
     Base class for the user facing interface to create a real time plot.
     """
 
-    def __init__(self, internal_plot_type, **plot_options):
-        # Check is mandatory
-        if not issubclass(internal_plot_type, Internal.RealTimePlot):
-            raise TypeError(
-                f"Given internal plot type must subclass rtplot.internal.RealTimePlot but is type {internal_plot_type}")
+    def __init__(self, dims: int, **plot_options):
+        # Check dimension valid
+        if not 1 <= dims <= 3:
+            raise ValueError(f"Plot dimension must be between 1 and 3, but received: {dims}")
 
         self._internal_plot_type = internal_plot_type
 
@@ -41,6 +43,7 @@ class RealTimePlot:
         # when it gets updated by add_statics
         self.plot_options["statics"] = self.statics
 
+        # Is the plot running
         self.is_started = False
 
     def __enter__(self):

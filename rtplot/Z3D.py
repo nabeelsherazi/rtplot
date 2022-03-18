@@ -22,7 +22,7 @@ class Z3D(Api.RealTimePlot):
     """
 
     def __init__(self, seconds_to_show=None, timeout=None, linestyle='b-'):
-        super().__init__(Internal.Z3D, seconds_to_show, timeout, linestyle)
+        super().__init__(Internal.Z3D_Internal, seconds_to_show, timeout, linestyle)
 
     def update(self, xyzs):
         """

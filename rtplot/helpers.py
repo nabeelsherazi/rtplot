@@ -19,42 +19,7 @@ def require_keys(keys, d):
             raise Exception(f"Missing required keyword argument {key}.")
 
 
-def circle(**kwargs):
-    require_keys(["xy", "radius"], kwargs)
-    params = {}
-    params.update(**kwargs)
-    return {"circle": params}
-
-
-def point(**kwargs):
-    require_keys(["xy"], kwargs)
-    params = {}
-    params.update(**kwargs)
-    return {"point": params}
-
-
-def vline(**kwargs):
-    require_keys(["x"], kwargs)
-    params = {}
-    params.update(**kwargs)
-    return {"vline": params}
-
-
-def hline(**kwargs):
-    require_keys(["y"], kwargs)
-    params = {}
-    params.update(**kwargs)
-    return {"hline": params}
-
-
-def rectangle(**kwargs):
-    require_keys(["xy", "width", "height"], kwargs)
-    params = {}
-    params.update(**kwargs)
-    return {"rectangle": params}
-
-
-def get_data_characteristics(array):
+def get_data_characteristics(array: np.array):
     num_coords = None
     num_lines = None
 
@@ -121,3 +86,22 @@ class Timer:
     @property
     def done(self):
         return time.perf_counter() >= self.end_time
+
+
+def min_and_max(data):
+    """
+    Return the min and max of a given numpy array, as a tuple
+    """
+    return (np.amin(data), np.amax(data))
+
+
+def get_data_bounds(data_list):
+    bounds = []
+    for data in data_list:
+        (dmin, dmax) = min_and_max(data)
+        drange = dmax - dmin
+        bounds.append({"range": drange, "min": dmin, "max": dmax})
+    return bounds
+
+def s2ns(secs):
+    return secs * 1E9
