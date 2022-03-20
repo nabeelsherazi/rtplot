@@ -27,6 +27,7 @@ import zmq
 from typing import List
 
 from rtplot.helpers import *
+from .events import Event
 
 
 class PlotServer:
@@ -162,7 +163,7 @@ class PlotServer:
         # Check for messages from the parent process
         if not self.message_queue.empty():
             msg = self.message_queue.get()
-            if msg == RtplotEvent.REQUEST_KILL:
+            if msg == Event.REQUEST_KILL:
                 self.kill()
 
         # Call the subclass-specific update function

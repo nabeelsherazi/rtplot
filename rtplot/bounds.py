@@ -6,9 +6,9 @@ class Bounds:
         if not 1 <= dims <= 3:
             raise ValueError(f"Bounds dimension must be between 1 and 3, but received: {dims}")
         self.dims = dims
-        # 1D data has form: [[t_min, t_max], [x_min, x_max]]
-        # 2D data has form: [[t_min, t_max], [x_min, x_max], [y_min, y_max]]
-        # 3D data has form: [[t_min, t_max], [x_min, x_max], [y_min, y_max], [z_min, z_max]]
+        # 1D data has form: [[t_min, x_min], [t_max, x_max]]
+        # 2D data has form: [[t_min, x_min, y_min], [t_max, x_max, y_max]]
+        # 3D data has form: [[t_min, x_min, y_min, z_min], [t_max, x_max, y_max, z_max]]
         self.values = np.zeros([2, dims + 1])
 
     @property

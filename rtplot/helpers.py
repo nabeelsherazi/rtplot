@@ -4,15 +4,6 @@ from enum import Enum, unique
 import random
 
 
-@unique
-class RtplotEvent(Enum):
-    REQUEST_KILL = 1
-    INTERNAL_PLOT_ERROR = 2
-    TIMED_OUT = 3
-    USER_ERROR = 4
-    LINES_MISMATCH = 5
-
-
 def require_keys(keys, d):
     for key in keys:
         if key not in d:
@@ -103,5 +94,8 @@ def get_data_bounds(data_list):
         bounds.append({"range": drange, "min": dmin, "max": dmax})
     return bounds
 
-def s2ns(secs):
+def s2ns(secs: float) -> float:
     return secs * 1E9
+
+def ns2s(nsecs: float) -> float:
+    return nsecs / 1E9
