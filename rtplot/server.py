@@ -24,7 +24,7 @@ import multiprocessing
 import zmq
 
 # Typing
-from typing import List
+from typing import List, Union
 
 from rtplot.helpers import *
 from .events import Event
@@ -41,31 +41,36 @@ class PlotServer:
     # Window title. FPS will be appended to end.
     window_title = f"rtplot {__version__}: "
 
-    # Plot option defaults
-    plot_option_defaults = {
-        "tail_length": -1,
-        "timeout": 3,
-        "linestyle": [],
-        "statics": [],
-        "head_size": 10
-    }
+    def __init__(self, port: int, dims: int, **plot_options):
 
-
-    def __init__(self, dims: int, **plot_options):
-
-        # Add defaults if not present
-        for (k, v) in self.plot_option_defaults.items():
-            plot_options.setdefault(k, v)
+        self.dims: int = dims
 
         # Set style
         mpl.style.use("fivethirtyeight")
 
-        # ZMQ socket
+        # ZMQ context
         self.context = zmq.Context()
-        self.socket = self.context.socket(zmq.REP)
-        self.socket.bind("tcp://*:5555")
+        self.socket: zmq.Socket = self.context.socket(zmq.PAIR)
+        self.socket.connect(f"tcp://localhost:{port}")
 
-        self.dims: int = dims
+        # Need to pop off all non-MPL items from the plot_options before passing
+        # or it'll error
+
+        # How long of a tail to show
+        # negative = Show all values
+        self.tail_length: float = s2ns(plot_options.pop("tail_length", default=-1))
+
+        # How long before plot auto-closes (seconds)
+        # negative = never timeout
+        self.timeout: float = s2ns(plot_options.pop("timeout", default=3.0))
+
+        # Statics
+        self.statics: List[Static] = self.generate_statics(plot_options["statics"], default=[])
+
+        # List of line format strings
+        self.fmts: List[str] = list(plot_options.pop("fmts", default=[]))
+
+        self.head_size: int = plot_options.pop("head_size", default=10)
 
         # Create figure for plotting
         self.fig, self.ax = plt.subplots(subplot_kw=plot_options)
@@ -73,22 +78,11 @@ class PlotServer:
         # Configure plot
         self.fig.subplots_adjust(bottom=0.15)  # Fix xlabel cutoff bug
 
-        # How long of a tail to show
-        # negative = Show all values
-        self.tail_length: float = s2ns(plot_options["tail_length"])
-
-        # How long before plot auto-closes (seconds)
-        # negative = never timeout
-        self.timeout: float = s2ns(plot_options["timeout"])
-
         # Time that data was last received
         self.time_last_recv: int  = time.time_ns()
 
         # Received first data yet?
         self.recvd_first_data: bool = False
-
-        # Statics
-        self.statics = self.generate_statics(plot_options["statics"])
 
         # Number of drawn lines
         self.n_lines: int = 0
@@ -99,9 +93,6 @@ class PlotServer:
         # Store reference to line heads here
         self.line_heads: List[Artist] = []
 
-        # List of linestyles
-        self.linestyles: List[str] = list(plot_options.pop("linestyle", default=""))
-
         # Track the time the last frame was shown (for fps)
         self.time_last_frame_ns: int = 0
 
@@ -111,13 +102,27 @@ class PlotServer:
         # Plot bounds
         self.bounds = Bounds(self.dims)
 
+        # Data held here
+        self.ts = deque()
+        self.xs = deque()
+        self.ys = deque()
+        self.zs = deque()
+
     @property
     def did_timeout(self) -> bool:
-        return (time.time_ns() - self.time_last_recv) > s2ns(self.timeout)
+        # Negative = never time out
+        if self.timeout < 0:
+            return False
+        else:
+            return (time.time_ns() - self.time_last_recv) > s2ns(self.timeout)
 
     @property
     def drawables(self) -> List[Artist]:
         return self.lines + self.line_heads + self.statics
+
+    @property
+    def num_lines(self) -> int:
+        return len(self.lines)
 
     def plot_init(self) -> None:
         """
@@ -139,7 +144,7 @@ class PlotServer:
 
         return self.lines + self.static_objects
     
-    def update_plot_from_bounds(self) -> None:
+    def update_plot_lims_from_bounds(self) -> None:
         # 1D is a special case
         if self.dims == 1:
             self.ax.set_xlim(*self.bounds.t)
@@ -151,27 +156,86 @@ class PlotServer:
         # Plus this if 3D
         if self.dims == 3:
             self.ax.set_zlim(*self.bounds.z)
+    
+    def initialize_lines(self, n: int) -> None:
+        """
+        Create n line objects, using fmts provided
+        """
+        while self.num_lines < n:
+            # Create a new line
+            # See if there's a fmt desired for this index, or just let MPL pick one
+            if len(self.fmts) < self.num_lines:
+                [new_line] = plt.plot([], [], self.fmts[self.num_lines])
+            else:
+                [new_line] = plt.plot([], [])
+            self.lines.append(new_line)
+            # Create a new "line head," which is just a line with a single point that will follow
+            # the newest point of its associated line
+            [new_line_head] = plt.plot([], [], marker='o', c=new_line.get_color(), markersize=self.head_size)
+            self.line_heads.append(new_line_head)
+        
+        # Sanity check
+        assert len(self.lines) == len(self.line_heads)
 
 
-    def update(self, frame_number) -> List[Artist]:
+    def update(self, frame_number: int) -> List[Artist]:
         """
         This is the superfunction that is called every time the animation updates.
         It is defined in order to perform any activities that should be done in the update
         of every subclass, such as updating the fps. Subclasses should NOT override this function.
         """
 
-        # Check for messages from the parent process
-        if not self.message_queue.empty():
-            msg = self.message_queue.get()
-            if msg == Event.REQUEST_KILL:
-                self.kill()
+        # Check for timeout
+        if self.did_time_out:
+            self.socket.send_pyobj(Event.TIMED_OUT)
+            self.kill()
 
-        # Call the subclass-specific update function
-        updated = self.plot_update(frame_number)
+        # Get a message
+        msg: Union[Event, np.ndarray] = self.socket.recv_pyobj()
+        # Record time
+        current_time_ns = time.time_ns()
+        self.time_last_recv = current_time_ns
+
+        # Parse message
+        if msg == Event.REQUEST_KILL:
+            self.kill()
+        elif isinstance(msg, np.ndarray):
+            # Client will ensure message is always an ndarray
+            # Array will look like (for 1D):
+            # [x1, x2, ..., xn]
+            # And for 3D:
+            # [[x1, y1, z1], [x2, y2, z2], ..., [xn, yn, zn]]
+            self.ts.append(current_time_ns)
+            if self.dims == 1:
+                self.xs.append(msg)
+            elif self.dims >= 2:
+                self.xs.append(msg[:, 1])
+                self.ys.append(msg[:, 2])
+            if self.dims == 3:
+                self.zs.append(msg[:, 3])
+        
+        # Prune data we don't need anymore
+        # If tail length == 0, delta time will be 0 for the last added value
+        # so only that one will remain
+        if self.tail_length >= 0:
+            while (current_time_ns - self.ts[0]) > self.tail_length:
+                self.ts.popleft()
+                if self.dims >= 1:
+                    self.xs.popleft()
+                if self.dims >= 2:
+                    self.ys.popleft()
+                if self.dims == 3:
+                    self.zs.popleft()
+            
+        # Draw data
+        for i in range(self.n_lines):
+            line = self.lines[i]
+            
+
         
 
         # Update fps
-        self.update_fps()
+        self.update_title()
 
         # Return the subclass-specific update
         return updated
@@ -209,7 +273,11 @@ class PlotServer:
         self.fig.canvas.resize_event()
 
     def kill(self):
+        """
+        Kill all plots and release sockets
+        """
         plt.close("all")
+        self.context.destroy()
         raise SystemExit
 
     def generate_statics(self, static_definitions: List[Static]) -> List[Artist]:
@@ -226,7 +294,7 @@ class PlotServer:
             statics.append(artist)
         return statics
 
-    def update_fps(self) -> None:
+    def update_title(self) -> None:
         """
         Updates window title text with fps
         """
