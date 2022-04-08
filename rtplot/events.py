@@ -1,8 +1,8 @@
-from enum import Enum, unique
+from enum import Enum, unique, auto
 
 @unique
 class Event(Enum):
-    REQUEST_KILL = 1
-    PLOT_ERROR = 2
-    TIMED_OUT = 3
-    DATA_ERROR = 4
+    HEARTBEAT = auto()
+    REQUEST_CLOSE = auto()
+    TIMED_OUT = auto()
+    PLOT_CLOSED = auto()

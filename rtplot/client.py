@@ -4,7 +4,7 @@
 
 import numpy as np
 import time
-import matplotlib
+import matplotlib as mpl
 from matplotlib import pyplot as plt
 import matplotlib.animation as animation
 from matplotlib import style

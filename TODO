@@ -11,3 +11,9 @@
   or not.
 
   - Change from using queues to ZMQ or something
+
+
+
+  ----
+
+  - Add ability to generate second view of same data. Something like plot.add_view([0, 1]) that makes a timeseries of just Y from the parent XY plot?

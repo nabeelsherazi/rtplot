@@ -27,6 +27,9 @@ class DequeArray:
         # Counter of number of elements
         self.count: int = 0
 
+    def __index__(self, key: slice) -> np.ndarray:
+        return self.data[key]
+
     def log(self) -> None:
         print(f"start: {self.start}, end: {self.end}, count: {self.count}, capacity: {self.capacity()}")
 
@@ -60,6 +63,8 @@ class DequeArray:
 
     def resize(self) -> None:
         "Double size"
+        if (self.capacity() * 2 > self.MAX_NUM_ROWS):
+            raise MaxSizeExceededError(f"Deque size {self.size()} required resize that would exceed MAX_NUM_ROWS: {self.MAX_NUM_ROWS}")
         new_data = np.zeros((self.capacity() * 2, self.num_cols_y, self.num_cols_z))
         if self.end >= self.start:
             new_data[0:self.size(), :, :] = np.copy(self.data[self.start:self.end, :, :])
@@ -70,7 +75,7 @@ class DequeArray:
             # Wrap to end
             second_run_length: int = self.end
             new_data[first_run_length:(first_run_length + second_run_length), :, :] = np.copy(self.data[0:self.end, :, :])
-        # Switch old and new
+        # New is old
         self.data = new_data
 
 
@@ -103,3 +108,7 @@ class DequeArray:
             return s
         else:
             raise IndexError("Deque is empty")
+
+class MaxSizeExceededError(Exception):
+    """Raised if deque size exceeds MAX_NUM_ROWS"""
+    pass

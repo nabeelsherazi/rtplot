@@ -3,9 +3,16 @@ PlotServer.py
 Contains the base class of the plot server, which handles routing.
 """
 
+# Array will look like (for 1D):
+# [x1, x2, ..., xn]
+# And for 3D:
+# [[x1, y1, z1], [x2, y2, z2], ..., [xn, yn, zn]]
+
 from rtplot.statics import Static, VLine
 from rtplot.version import __version__
 from .bounds import Bounds
+from .npdeque import DequeArray
+from .logger import logger
 
 import numpy as np
 import time
@@ -19,12 +26,13 @@ from mpl_toolkits.mplot3d import Axes3D
 import copy
 from collections import deque
 import multiprocessing
+import atexit
 
 # Messaging
 import zmq
 
 # Typing
-from typing import List, Union
+from typing import Deque, List, NoReturn, Union
 
 from rtplot.helpers import *
 from .events import Event
@@ -41,17 +49,14 @@ class PlotServer:
     # Window title. FPS will be appended to end.
     window_title = f"rtplot {__version__}: "
 
-    def __init__(self, port: int, dims: int, **plot_options):
+    def __init__(self, port: int, dims: int, num_lines: int, **plot_options):
 
         self.dims: int = dims
+        self.num_lines: int = num_lines
+        self.port = port
 
         # Set style
         mpl.style.use("fivethirtyeight")
-
-        # ZMQ context
-        self.context = zmq.Context()
-        self.socket: zmq.Socket = self.context.socket(zmq.PAIR)
-        self.socket.connect(f"tcp://localhost:{port}")
 
         # Need to pop off all non-MPL items from the plot_options before passing
         # or it'll error
@@ -81,12 +86,6 @@ class PlotServer:
         # Time that data was last received
         self.time_last_recv: int  = time.time_ns()
 
-        # Received first data yet?
-        self.recvd_first_data: bool = False
-
-        # Number of drawn lines
-        self.n_lines: int = 0
-
         # Store reference to all lines here
         self.lines: List[Artist] = []
 
@@ -102,11 +101,8 @@ class PlotServer:
         # Plot bounds
         self.bounds = Bounds(self.dims)
 
-        # Data held here
-        self.ts = deque()
-        self.xs = deque()
-        self.ys = deque()
-        self.zs = deque()
+        # Create data deque
+        self.data = DequeArray(self.dims, self.num_lines)
 
     @property
     def did_timeout(self) -> bool:
@@ -120,9 +116,38 @@ class PlotServer:
     def drawables(self) -> List[Artist]:
         return self.lines + self.line_heads + self.statics
 
-    @property
-    def num_lines(self) -> int:
-        return len(self.lines)
+    def init(self) -> None:
+        # Initialize ZMQ
+        try:
+            self.init_socket()
+        except:
+            self.kill()
+        # Initialize lines and line heads
+        self.init_lines()
+
+    def init_socket(self) -> None:
+        """Initialize ZMQ context and connect."""
+        # ZMQ context
+        self.context = zmq.Context()
+        self.socket: zmq.Socket = self.context.socket(zmq.PAIR)
+        self.socket.connect(f"tcp://127.0.0.1:{self.port}")
+
+    def init_lines(self) -> None:
+        """Initialize line objects and line heads."""
+        for next_line_ix in range(self.num_lines):
+            # Create a new line
+            # See if there's a fmt desired for this index, or just let MPL pick one
+            if len(self.fmts) < next_line_ix:
+                [new_line] = plt.plot([], [], self.fmts[next_line_ix])
+            else:
+                [new_line] = plt.plot([], [])
+            self.lines.append(new_line)
+            # Create a new "line head," which is just a line with a single point that will follow
+            # the newest point of its associated line
+            [new_line_head] = plt.plot([], [], marker='o', c=new_line.get_color(), markersize=self.head_size)
+            self.line_heads.append(new_line_head)
+        # Sanity check
+        assert len(self.lines) == len(self.line_heads)
 
     def plot_init(self) -> None:
         """
@@ -156,29 +181,8 @@ class PlotServer:
         # Plus this if 3D
         if self.dims == 3:
             self.ax.set_zlim(*self.bounds.z)
-    
-    def initialize_lines(self, n: int) -> None:
-        """
-        Create n line objects, using fmts provided
-        """
-        while self.num_lines < n:
-            # Create a new line
-            # See if there's a fmt desired for this index, or just let MPL pick one
-            if len(self.fmts) < self.num_lines:
-                [new_line] = plt.plot([], [], self.fmts[self.num_lines])
-            else:
-                [new_line] = plt.plot([], [])
-            self.lines.append(new_line)
-            # Create a new "line head," which is just a line with a single point that will follow
-            # the newest point of its associated line
-            [new_line_head] = plt.plot([], [], marker='o', c=new_line.get_color(), markersize=self.head_size)
-            self.line_heads.append(new_line_head)
-        
-        # Sanity check
-        assert len(self.lines) == len(self.line_heads)
 
-
-    def update(self, frame_number: int) -> List[Artist]:
+    def update(self) -> List[Artist]:
         """
         This is the superfunction that is called every time the animation updates.
         It is defined in order to perform any activities that should be done in the update
@@ -197,60 +201,52 @@ class PlotServer:
         self.time_last_recv = current_time_ns
 
         # Parse message
-        if msg == Event.REQUEST_KILL:
+        if msg == Event.HEARTBEAT:
+            return self.lines + self.line_heads + self.statics
+        elif msg == Event.REQUEST_CLOSE:
             self.kill()
         elif isinstance(msg, np.ndarray):
-            # Client will ensure message is always an ndarray
-            # Array will look like (for 1D):
-            # [x1, x2, ..., xn]
-            # And for 3D:
-            # [[x1, y1, z1], [x2, y2, z2], ..., [xn, yn, zn]]
-            self.ts.append(current_time_ns)
-            if self.dims == 1:
-                self.xs.append(msg)
-            elif self.dims >= 2:
-                self.xs.append(msg[:, 1])
-                self.ys.append(msg[:, 2])
-            if self.dims == 3:
-                self.zs.append(msg[:, 3])
+            self.data.append(msg)
+        else:
+            logger.error(f"Received object of unknown type: {repr(msg)}")
         
         # Prune data we don't need anymore
-        # If tail length == 0, delta time will be 0 for the last added value
-        # so only that one will remain
         if self.tail_length >= 0:
-            while (current_time_ns - self.ts[0]) > self.tail_length:
-                self.ts.popleft()
-                if self.dims >= 1:
-                    self.xs.popleft()
-                if self.dims >= 2:
-                    self.ys.popleft()
-                if self.dims == 3:
-                    self.zs.popleft()
+            while (current_time_ns - self.data[0]) > self.tail_length: # Note ">" here vs. ">=" above
+                self.data.popleft()
             
         # Draw data
-        for i in range(self.n_lines):
-            line = self.lines[i]
-            
+        self.draw()
 
-        
-
-        # Update fps
+        # Update fps in title
         self.update_title()
 
-        # Return the subclass-specific update
-        return updated
+        return self.lines + self.line_heads + self.statics
 
-    def plot_update(self, frame_number: int) -> List[Artist]:
-        """
-        Everything that needs to be done in a single frame. It must be implemented
-        in a subclass-specific manner.
-        """
-        raise NotImplementedError
+    def draw(self) -> None:
+        """Draw lines and line heads. Seperated out for mocking purposes."""
+        # TODO: Splitting into two functions, one for lines and one for line heads,
+        # would both improve cache locality, and make it easier to turn off line heads.
+        # But it seems like a premature optimization without measurement.
+        for i in range(self.num_lines):
+            line, head = self.lines[i], self.line_heads[i]
+            # In 1D (special case), we use the timestamps (column 0) for the plot's X data
+            # the data (column 1) is sent to the plot's Y data
+            if self.dims == 1:
+                line.set_data(self.data[:, 0, i], self.data[:, 1, i])
+                head.set_data(self.data[0, 0, i], self.data[0, 1, i])
+            # In 2D and 3D, we set the X data (column 1) and Y data (column 2) as expected
+            elif self.dims >= 2:
+                line.set_data(self.data[:, 1, i], self.data[:, 2, i])
+                head.set_data(self.data[0, 1, i], self.data[0, 2, i])
+            # But in 3D, we have to use set_3d_properties for Z data (column 3)
+            if self.dims == 3:
+                line.set_3d_properties(self.data[:, 3, i])
+                head.set_3d_properties(self.data[0, 3, i])
+
 
     def start_animation(self, refresh_interval: int) -> None:
-        """
-        Starts the animation.
-        """
+        """Starts the animation."""
         self.refresh_interval = refresh_interval  # milliseconds
         self.ani = animation.FuncAnimation(
             self.fig,
@@ -272,12 +268,16 @@ class PlotServer:
         self.ani._init_func = None
         self.fig.canvas.resize_event()
 
-    def kill(self):
-        """
-        Kill all plots and release sockets
-        """
+    @atexit.register
+    def cleanup(self) -> None:
+        """Close all plots and release sockets."""
         plt.close("all")
+        self.socket.send_pyobj(Event.PLOT_CLOSED)
         self.context.destroy()
+
+    def kill(self) -> NoReturn:
+        """Cleanup and close out."""
+        self.cleanup()
         raise SystemExit
 
     def generate_statics(self, static_definitions: List[Static]) -> List[Artist]:
